@@ -1,47 +1,50 @@
-from locust import task, run_single_user, FastHttpUser
-from insert_product import login
+import json
+
+import products
+from cart import dao
+from products import Product
 
 
-class AddToCartUser(FastHttpUser):
-    host = "http://localhost:5000"
-    username = "test123"
-    password = "test123"
-    token = None
+class Cart:
+    def __init__(self, id: int, username: str, contents: list[Product], cost: float):
+        self.id = id
+        self.username = username
+        self.contents = contents
+        self.cost = cost
 
-    def on_start(self):
-        """
-        Initialize user session by logging in and retrieving the authentication token.
-        """
-        try:
-            cookies = login(self.username, self.password)
-            self.token = cookies.get("token")
-            if not self.token:
-                raise ValueError("Login failed. Token not received.")
-        except Exception as e:
-            self.environment.runner.quit()
-            raise RuntimeError(f"Failed to initialize user: {e}")
-
-    @task
-    def view_cart(self):
-        """
-        Simulate viewing the cart.
-        """
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8",
-            "Cookie": f"token={self.token}",
-            "Referer": f"{self.host}/product/1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "same-origin",
-            "Upgrade-Insecure-Requests": "1",
-        }
-
-        with self.client.get("/cart", headers=headers, catch_response=True) as response:
-            if response.status_code == 200:
-                response.success()
-            else:
-                response.failure(f"Failed to fetch cart. Status code: {response.status_code}")
+    def load(data):
+        return Cart(data['id'], data['username'], data['contents'], data['cost'])
 
 
-if __name__ == "__main__":
-    run_single_user(AddToCartUser)
+def get_cart(username: str) -> list:
+    cart_details = dao.get_cart(username)
+    if cart_details is None:
+        return []
+    
+    items = []
+    for cart_detail in cart_details:
+        contents = cart_detail['contents']
+        evaluated_contents = eval(contents)  
+        for content in evaluated_contents:
+            items.append(content)
+    
+    i2 = []
+    for i in items:
+        temp_product = products.get_product(i)
+        i2.append(temp_product)
+    return i2
+
+    
+
+
+def add_to_cart(username: str, product_id: int):
+    dao.add_to_cart(username, product_id)
+
+
+def remove_from_cart(username: str, product_id: int):
+    dao.remove_from_cart(username, product_id)
+
+def delete_cart(username: str):
+    dao.delete_cart(username)
+
+
